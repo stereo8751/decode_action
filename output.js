@@ -1,4 +1,4 @@
-//Sun Mar 16 2025 14:32:01 GMT+0000 (Coordinated Universal Time)
+//Sun Mar 16 2025 14:50:05 GMT+0000 (Coordinated Universal Time)
 //Base:https://github.com/echo094/decode-js
 //Modify:https://github.com/smallfawn/decode_action
 /**
@@ -5261,7 +5261,6 @@ function a0c() {
   };
   return a0c();
 }
-
 // prettier-ignore
 function Env(t, e) {
   class s {
