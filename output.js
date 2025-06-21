@@ -1,8 +1,7 @@
-//Sat Jun 21 2025 10:53:25 GMT+0000 (Coordinated Universal Time)
+//Sat Jun 21 2025 10:58:03 GMT+0000 (Coordinated Universal Time)
 //Base:https://github.com/echo094/decode-js
 //Modify:https://github.com/smallfawn/decode_action
 /**
- * cron "4 5,13 * * *" SFY.js
  * export SFY='memberId&shopMemberId memberId1&shopMemberId1'
  * export TEXTURL='https://api.btstu.cn/yan/api.php'
  * 微信公众号水费易
@@ -10,7 +9,7 @@
  * shopMemberId获取：点击微营业厅抓包请求体的id
  */
 const $ = new Env("\u6C34\u8D39\u6613");
-const notify = $.isNode() ? require("../sendNotify") : "";
+const notify = $.isNode() ? require("./sendNotify") : "";
 function a0e(a, b) {
   var c = a0c();
   return a0e = function (d, e) {
