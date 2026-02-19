@@ -1,376 +1,153 @@
 /**
- * cron "35 0-23/1 * * *" XiJiu.js
- * export XiJiu='[{"id": "1", "loginCode": "1"},{"id": "2", "loginCode": "2"}]'
- * export XiJiu_Exchange='true'//酒换积分
+ * cron "11 7,17 * * *" JunPinHui.js
+ * export JunPinHui="账号1&密码1 账号2&密码2"
  * export OCR_SERVER="ocr服务"
+ * export GHPROXYURL="https://ghfast.top"
  */
-const $ = new Env('习酒');
-const notify = $.isNode() ? require('../sendNotify') : '';
-const XiJiu = ($.isNode() ? JSON.parse(process.env.XiJiu) : $.getjson("XiJiu")) || [];
-const XiJiu_Exchange = ($.isNode() ? process.env.XiJiu_Exchange : $.getdata("XiJiu_Exchange")) === 'true' || false;
+const $ = new Env('君品荟');
+const JunPinHui = ($.isNode() ? process.env.JunPinHui : $.getdata("JunPinHui")) || '';
 const OCR_SERVER = ($.isNode() ? process.env.OCR_SERVER : $.getdata("OCR_SERVER")) || 'https://ddddocr.xzxxn7.live';
-let cropType = [{"1":"高粱"},{"2":"小麦"}];
-let loginCode = '';
+const GHPROXYURL = ($.isNode() ? process.env.GHPROXYURL : $.getdata("GHPROXYURL")) || 'https://ghfast.top';
+let appkey = 'OzVFDV3c6omb';
+let actId = '';
+let Utils = undefined;
 let token = '';
 let notice = '';
 !(async () => {
-    if (typeof $request != "undefined") {
-        await getCookie();
-    } else {
-        await main();
-    }
+    await getNotice()
+    await main();
 })().catch((e) => {$.log(e)}).finally(() => {$.done({});});
 
 async function main() {
-    console.log('作者：@xzxxn777\n频道：https://t.me/xzxxn777\n群组：https://t.me/xzxxn7777\n自用机场推荐：https://xn--diqv0fut7b.com\n')
-    for (const item of XiJiu) {
-        id = item.id;
-        loginCode = item.loginCode;
-        console.log(`用户：${id}开始任务`)
-        console.log('获取token')
-        let login = await loginGet(`/anti-channeling/public/index.php/api/v2/Member/getJwt`);
-        if (login.code != 0) {
-            console.log(login.msg)
+    Utils = await loadUtils();
+    if (!JunPinHui) {
+        console.log("先去boxjs填写账号密码")
+        await sendMsg('先去boxjs填写账号密码');
+        return
+    }
+    let arr = JunPinHui.split(" ");
+    for (const item of arr) {
+        phone = item.split("&")[0]
+        pwd = item.split("&")[1]
+        console.log(`用户：${phone}开始任务`)
+        const encryptor = new (Utils.loadJSEncrypt());
+        const pubKey
+            = 'MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQDZxexT+63AFID2lykG6jVmZpVkW6IitJjWukMmBGA8hR7qSTIsDKTQ'
+            + 'DjzKAnTgD3Zn3sNQlqQCxpyTNTP2T+/OZxet1nrbbOAPAi4TrEA61wMO+dnP7IbONmCqg3lDcgiu+b7imOjPxNOGMoeTHGVD2L7tq4S9HuC01Ru3WprVRwIDAQAB'
+        encryptor.setPublicKey(pubKey);
+        const encrypted = encryptor.encrypt(pwd)
+        let login = await commonPost('/api/login/phoneLogin', {"phone": phone, "channelCode": "xj_mall_wx_applet", "password": encrypted});
+        if (login.code != 10000) {
+            await sendMsg(`用户：${phone}\n${login.message}`);
             continue
         }
-        token = login.data.jwt;
-        console.log(token)
+        token = login.data.token;
         //签到
+        let captcha = await commonPost('/api/captcha/get',{"captchaType" : "blockPuzzle"})
+        let getXpos = await slidePost({'slidingImage': captcha.data.repData.jigsawImageBase64, 'backImage': captcha.data.repData.originalImageBase64})
+        let point = aesEncrypt({"x":getXpos.result,"y":5}, captcha.data.repData.secretKey)
+        let check = await commonPost(`/api/captcha/check`,{"captchaType":"blockPuzzle","pointJson":point,"token":captcha.data.repData.token})
+        console.log("验证滑块：" + check.success)
         console.log("开始签到")
-        let sign = await commonPost("/member/Signin/sign",'from=miniprogram_index');
-        console.log(sign.msg)
-        //农场
-        //每日验证
-        console.log("————————————")
-        console.log("开始每日验证")
-        let getValidateInfo = await commonGet(`/garden/slide_validate/getValidateInfo`);
-        if (getValidateInfo.data.status == 1) {
-            let slidingImage = getValidateInfo.data.datas[1].split(",")[1];
-            let backImage = getValidateInfo.data.datas[0].split(",")[1];
-            let getXpos = await slidePost({'slidingImage': slidingImage, 'backImage': backImage})
-            if (!getXpos) {
-                console.log("ddddocr服务异常")
-                await sendMsg('ddddocr服务异常');
-                break
-            }
-            console.log(getXpos)
-            let toValidate = await commonPost(`/garden/slide_validate/toValidate`,JSON.stringify({"coordinate":getXpos.result}));
-            console.log(toValidate.msg)
-        } else {
-            console.log(getValidateInfo.msg)
-        }
-        //每日签到
-        console.log("————————————")
-        console.log("开始每日签到")
-        let dailySign = await commonPost("/garden/sign/dailySign",JSON.stringify({}));
-        if (dailySign.data.isTodayFirstSign) {
-            console.log(dailySign.data.tips)
-        } else {
-            console.log('今日已签到')
-        }
-        //种植
-        console.log("————————————")
-        console.log("开始种植")
-        let getMemberInfo = await commonGet("/garden/Gardenmemberinfo/getMemberInfo");
-        console.log(`拥有：高粱*${getMemberInfo.data.sorghum} 小麦*${getMemberInfo.data.wheat} 酒曲*${getMemberInfo.data.wine_yeast} 酒*${getMemberInfo.data.wine} 水*${getMemberInfo.data.water} 肥料*${getMemberInfo.data.manure}`)
-        let lands = await commonGet("/garden/sorghum/index");
-        let unLock = true
-        for (let land of lands.data) {
-            if (land.status == -1) {
-                console.log(`第${land.serial_number}块地：未解锁`)
-                //解锁
-                if (unLock) {
-                    console.log(`开始解锁土地`)
-                    let extend = await commonPost(`/garden/sorghum/extend`,JSON.stringify({"serial_number":land.serial_number}))
-                    if (extend.err == 0) {
-                        console.log(extend.msg)
-                        //种植
-                        console.log(`开始种植`)
-                        getMemberInfo = await commonGet("/garden/Gardenmemberinfo/getMemberInfo");
-                        if (getMemberInfo.data.wine_yeast > 0) {
-                            //高粱
-                            let seed = await commonPost(`/garden/sorghum/seed`,JSON.stringify({"id":land.id,"type":1}))
-                            if (seed.err == 61010) {
-                                await sendMsg(`用户：${id}\n${seed.msg}`);
-                            }
-                            console.log(seed.msg)
-                        } else {
-                            //小麦
-                            let seed = await commonPost(`/garden/sorghum/seed`,JSON.stringify({"id":land.id,"type":2}))
-                            if (seed.err == 61010) {
-                                await sendMsg(`用户：${id}\n${seed.msg}`);
-                            }
-                            console.log(seed.msg)
-                        }
-                    } else {
-                        console.log(extend.msg)
-                        unLock = false
-                    }
-                }
+        let signIn = await commonPost(`/api/customer/daily/fillSignIn`,{"channelCode":"xj_mall_wx_applet"})
+        if (signIn.code == 10000) {
+            if (signIn.data.pointValue != 0) {
+                console.log(`签到获得：${signIn.data.pointValue}积分`)
             } else {
-                console.log(`第${land.serial_number}块地：已解锁`)
-                let name = cropType.find(item => land.type in item)[land.type];
-                console.log(`种植：${name}*${land.volumn} 收获时间：${land.crop_time}`)
-                if (land.status == 0) {
-                    console.log(`${name}已收获，未种植`)
-                    console.log(`开始种植`)
-                    getMemberInfo = await commonGet("/garden/Gardenmemberinfo/getMemberInfo");
-                    if (getMemberInfo.data.wine_yeast > 0) {
-                        //高粱
-                        let seed = await commonPost(`/garden/sorghum/seed`,JSON.stringify({"id":land.id,"type":1}))
-                        if (seed.err == 61010) {
-                            await sendMsg(`用户：${id}\n${seed.msg}`);
-                        }
-                        console.log(seed.msg)
-                    } else {
-                        //小麦
-                        let seed = await commonPost(`/garden/sorghum/seed`,JSON.stringify({"id":land.id,"type":2}))
-                        if (seed.err == 61010) {
-                            await sendMsg(`用户：${id}\n${seed.msg}`);
-                        }
-                        console.log(seed.msg)
-                    }
-                } else if (land.status == 2) {
-                    console.log(`${name}已成熟，开始收获`)
-                    let harvest = await commonPost(`/garden/sorghum/harvest`,JSON.stringify({"id":land.id}));
-                    console.log(harvest.msg)
-                    console.log(`开始种植`)
-                    getMemberInfo = await commonGet("/garden/Gardenmemberinfo/getMemberInfo");
-                    if (getMemberInfo.data.wine_yeast > 0) {
-                        //高粱
-                        let seed = await commonPost(`/garden/sorghum/seed`,JSON.stringify({"id":land.id,"type":1}))
-                        if (seed.err == 61010) {
-                            await sendMsg(`用户：${id}\n${seed.msg}`);
-                        }
-                        console.log(seed.msg)
-                    } else {
-                        //小麦
-                        let seed = await commonPost(`/garden/sorghum/seed`,JSON.stringify({"id":land.id,"type":2}))
-                        if (seed.err == 61010) {
-                            await sendMsg(`用户：${id}\n${seed.msg}`);
-                        }
-                        console.log(seed.msg)
-                    }
+                console.log(signIn.data.resultDesc)
+            }
+        } else {
+            console.log(signIn.message)
+        }
+        //关注
+        let follow = await commonPost(`/media/video/addInterest`,{"shopId":206})
+        console.log(follow.success)
+        //抽奖
+        /*console.log("————————————")
+        console.log("开始抽奖")
+        if (!actId) {
+            console.log('获取actId')
+            let getData = await cannonPost('/api/page/getData',{"params":null,"pageId":"89","sellerId":null});
+            let regex = /actId=([a-zA-Z0-9]+)/;
+            let match = JSON.stringify(getData).match(regex);
+            if (match) {
+                actId = match[1];
+                console.log(`actId: ${actId}`)
+            }
+        }
+        if (actId) {
+            let time = (new Date).valueOf();
+            let sign = getSign(time,{"wxToken":token,"actId":actId})
+            let getId = await drawPost(`/activity/user/get/by/token?mix_nick=${token}`,{"jsonRpc":"2.0","params":{"commonParameter":{"appKey":appkey,"sign":sign,"timestamp":time},"admJson":{"wxToken":token,"actId":actId}}})
+            time = (new Date).valueOf();
+            sign = getSign(time,{"id":getId.data.data.id,"actId":actId})
+            let taskList = await drawPost(`/mission/completeState?mix_nick=${token}`,{"jsonRpc":"2.0","params":{"commonParameter":{"appKey":appkey,"sign":sign,"timestamp":time},"admJson":{"id":getId.data.data.id,"actId":actId}}})
+            for (const task of taskList.data.data) {
+                console.log(`任务：${task.missionName}`)
+                if (task.type == "inviteJoinMember" || task.type == "payOrder") {
+                    continue
+                }
+                if (task.isComplete) {
+                    console.log("已完成")
                 } else {
-                    let code = 0
-                    while (code == 0) {
-                        let watering = await commonPost(`/garden/sorghum/watering`,JSON.stringify({"id":land.id}));
-                        console.log(watering.msg)
-                        code = watering.err
-                    }
-                    code = 0
-                    while (code == 0) {
-                        let manuring = await commonPost(`/garden/sorghum/manuring`,JSON.stringify({"id":land.id}));
-                        console.log(manuring.msg)
-                        code = manuring.err
-                    }
-                }
-                lands = await commonGet("/garden/sorghum/index");
-                const i = lands.data.findIndex(e => e.id == land.id);
-                if (lands.data[i].status == 2) {
-                    console.log(`${name}已成熟，开始收获`)
-                    let harvest = await commonPost(`/garden/sorghum/harvest`,JSON.stringify({"id":land.id}));
-                    console.log(harvest.msg)
-                    console.log(`开始种植`)
-                    getMemberInfo = await commonGet("/garden/Gardenmemberinfo/getMemberInfo");
-                    if (getMemberInfo.data.wine_yeast > 0) {
-                        //高粱
-                        let seed = await commonPost(`/garden/sorghum/seed`,JSON.stringify({"id":land.id,"type":1}))
-                        if (seed.err == 61010) {
-                            await sendMsg(`用户：${id}\n${seed.msg}`);
-                        }
-                        console.log(seed.msg)
+                    time = (new Date).valueOf();
+                    sign = getSign(time,{"missionType":task.type,"id":getId.data.data.id,"actId":actId})
+                    let completeMission = await drawPost(`/mission/completeMission?mix_nick=${token}`,{"jsonRpc":"2.0","params":{"commonParameter":{"appKey":appkey,"sign":sign,"timestamp":time},"admJson":{"missionType":task.type,"id":getId.data.data.id,"actId":actId}}})
+                    if (completeMission.data.status == 200) {
+                        console.log(completeMission.data.data.remark)
                     } else {
-                        //小麦
-                        let seed = await commonPost(`/garden/sorghum/seed`,JSON.stringify({"id":land.id,"type":2}))
-                        if (seed.err == 61010) {
-                            await sendMsg(`用户：${id}\n${seed.msg}`);
-                        }
-                        console.log(seed.msg)
+                        console.log(completeMission.data.msg)
                     }
                 }
-                let code = 0
-                while (code == 0) {
-                    let watering = await commonPost(`/garden/sorghum/watering`,JSON.stringify({"id":land.id}));
-                    console.log(watering.msg)
-                    code = watering.err
-                }
-                code = 0
-                while (code == 0) {
-                    let manuring = await commonPost(`/garden/sorghum/manuring`,JSON.stringify({"id":land.id}));
-                    console.log(manuring.msg)
-                    code = manuring.err
-                }
             }
-        }
-        //任务
-        console.log("————————————")
-        console.log("开始做任务")
-        let tasks = await commonGet("/garden/tasks/index");
-        if (tasks) {
-            for (let task of Object.values(tasks.data)) {
-                console.log(`任务：${task.name} id：${task.id}`)
-                if (task.is_complete == 1) {
-                    console.log("任务已完成")
+            while (true) {
+                time = (new Date).valueOf();
+                sign = getSign(time,{"id":getId.data.data.id,"actId":actId})
+                let draw = await drawPost(`/awards/draw?mix_nick=${token}`,{"jsonRpc":"2.0","params":{"commonParameter":{"appKey":appkey,"sign":sign,"timestamp":time},"admJson":{"id":getId.data.data.id,"actId":actId}}})
+                if (draw.data.status == 200) {
+                    console.log(`抽奖获得：${draw.data.data.awardName}`)
                 } else {
-                    if (task.id == 1) {
-                        let question = await commonGet(`/garden/Gardenquestiontask/index`);
-                        let answer = [{"itemid":`${question.data[0].id}`,"selected":`${question.data[0].answer}`}]
-                        let answerResults = await commonGet(`/garden/Gardenquestiontask/answerResults?answer=${encodeURI(JSON.stringify(answer))}`);
-                        console.log(answerResults.msg)
-                    }
-                    if (task.id == 2) {
-                        for (let i = 0; i < task.limit_num; i++) {
-                            let dailyShare = await commonGet("/garden/gardenmemberinfo/dailyShare");
-                            console.log(dailyShare.msg)
-                        }
-                    }
-                    if (task.id == 4) {
-                        let realScene = await commonGet("/garden/notice/realScene");
-                        let reward = await commonGet(`/garden/realscene/reward`);
-                        console.log(reward.msg)
-                    }
+                    console.log(draw.data.msg)
+                    break
                 }
             }
-        }
-        //添加好友
-        console.log("————————————")
-        console.log("开始添加好友")
-        let addFriendToken = await commonGet("/garden/friends/addFriendToken");
-        addFriendToken = addFriendToken.data;
-        addFriendToken.friend_id = id
-        console.log(`助力码：${JSON.stringify(addFriendToken)}`)
-        //let add = await commonPost("/garden/friends/add",JSON.stringify({"friend_id":"15920333","time":"1714111454","token":"d75d8073df5b1d10507d6e30677d68c9"}));
-        //console.log(add.msg)
-        //制曲
-        console.log("————————————")
-        console.log("开始制曲")
-        let code = 0
-        while (code == 0) {
-            let makeWineYeast = await makePost("/garden/wheat/makeWineYeast",'volumn=100');
-            console.log(makeWineYeast.msg)
-            code = makeWineYeast.err
-        }
-        //制酒
-        console.log("————————————")
-        console.log("开始制酒")
-        let wine = await commonGet("/garden/gardenmemberwine/index");
-        if (wine.total == 0) {
-            console.log("没有正在酿造的酒，开始制酒")
-            let makeWine = await makePost("/garden/gardenmemberwine/makeWine",'volumn=200');
-            console.log(makeWine.msg)
-        }
-        for (let item of wine.data) {
-            console.log(`酒*${item.crrent_volumn} 收获时间：${item.crop_time}`)
-            if (item.status == 4) {
-                let harvestWine = await commonGet(`/garden/gardenmemberwine/harvestWine?id=${item.id}`);
-                console.log(harvestWine.msg)
-            }
-        }
-        //兑换
-        console.log("————————————")
-        console.log("兑换")
-        getMemberInfo = await commonGet("/garden/Gardenmemberinfo/getMemberInfo");
-        console.log(`拥有酒：${getMemberInfo.data.wine}`)
-        if (XiJiu_Exchange) {
-            let exchange = await commonGet(`/garden/Gardenjifenshop/exchange?wine=${getMemberInfo.data.wine}`);
-            console.log(exchange.msg)
-        }
+        } else {
+            console.log("获取actId失败")
+        } */
         //查询积分
-        console.log("————————————")
-        console.log("查询积分")
-        getMemberInfo = await commonGet("/garden/Gardenmemberinfo/getMemberInfo");
-        console.log(`拥有积分：${getMemberInfo.data.integration} 拥有酒：${getMemberInfo.data.wine}\n`)
-        notice += `用户：${id} 积分：${getMemberInfo.data.integration} 酒：${getMemberInfo.data.wine}\n`
+        /*console.log("————————————")*/
+        /*console.log("查询积分")*/
+        let getMemberInfo = await commonPost("/api/customer/accoutInter/token",{"checkLevelExist":true});
+        console.log(`拥有积分：${getMemberInfo.data.points}\n`)
+        console.log("——————————————————————————")
+        notice += `用户：${phone} 积分：${getMemberInfo.data.points}\n`
     }
     if (notice) {
         await sendMsg(notice);
     }
 }
 
-async function getCookie() {
-    const loginCode = $request.headers["login_code"];
-    if (!loginCode) {
-        return
-    }
-    const body = $.toObj($response.body);
-    if (!body.data || !body.data.phone_no) {
-        return
-    }
-    const id = body.data.phone_no;
-    const newData = {"id": id, "loginCode": loginCode}
-    const index = XiJiu.findIndex(e => e.id == newData.id);
-    if (index !== -1) {
-        if (XiJiu[index].loginCode == newData.loginCode) {
-            return
-        } else {
-            XiJiu[index] = newData;
-            console.log(newData.loginCode)
-            $.msg($.name, `🎉用户${newData.id}更新token成功!`, ``);
-        }
-    } else {
-        XiJiu.push(newData)
-        console.log(newData.loginCode)
-        $.msg($.name, `🎉新增用户${newData.id}成功!`, ``);
-    }
-    $.setjson(XiJiu, "XiJiu");
-}
-
-async function loginGet(url) {
+async function cannonPost(url,body = {}) {
     return new Promise(resolve => {
         const options = {
-            url: `https://xcx.exijiu.com${url}`,
+            url: `https://cannon.exijiu.com${url}`,
             headers : {
                 'Connection': 'keep-alive',
-                'login_code': loginCode,
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36 MicroMessenger/7.0.20.1781(0x6700143B) NetType/WIFI MiniProgramEnv/Windows WindowsWechat/WMPF WindowsWechat(0x63090a13) XWEB/9129',
-                'Accept': '*/*',
-                'Origin': 'https://mallwm.exijiu.com',
-                'Sec-Fetch-Site': 'cross-site',
-                'Sec-Fetch-Mode': 'cors',
-                'Sec-Fetch-Dest': 'empty',
-                'Referer': 'https://servicewechat.com/wx673f827a4c2c94fa/264/page-frame.html',
-                'Accept-Encoding': 'gzip, deflate, br',
-                'Accept-Language': 'zh-CN,zh;q=0.9'
-            }
-        }
-        $.get(options, async (err, resp, data) => {
-            try {
-                if (err) {
-                    console.log(`${JSON.stringify(err)}`)
-                    console.log(`${$.name} API请求失败，请检查网路重试`)
-                } else {
-                    await $.wait(4000);
-                    resolve(JSON.parse(data));
-                }
-            } catch (e) {
-                $.logErr(e, resp)
-            } finally {
-                resolve();
-            }
-        })
-    })
-}
-
-async function commonPost(url,body = '') {
-    return new Promise(resolve => {
-        const options = {
-            url: `https://apimallwm.exijiu.com${url}`,
-            headers : {
-                'Connection': 'keep-alive',
-                'Authorization': token,
+                'dataType': 'json',
+                'Channel': 'miniapp',
+                'X-access-token': token,
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36 MicroMessenger/7.0.20.1781(0x6700143B) NetType/WIFI MiniProgramEnv/Windows WindowsWechat/WMPF WindowsWechat(0x63090a13) XWEB/9129',
                 'Content-Type': 'application/json',
                 'Accept': '*/*',
-                'Origin': 'https://mallwm.exijiu.com',
-                'Sec-Fetch-Site': 'cross-site',
+                'Origin': 'https://mall.exijiu.com',
+                'Sec-Fetch-Site': 'same-site',
                 'Sec-Fetch-Mode': 'cors',
                 'Sec-Fetch-Dest': 'empty',
-                'Referer': 'https://servicewechat.com/wx673f827a4c2c94fa/264/page-frame.html',
+                'Referer': 'https://mall.exijiu.com/',
                 'Accept-Encoding': 'gzip, deflate, br',
                 'Accept-Language': 'zh-CN,zh;q=0.9'
             },
-            body: body,
+            body: JSON.stringify(body),
         }
         $.post(options, async (err, resp, data) => {
             try {
@@ -390,64 +167,29 @@ async function commonPost(url,body = '') {
     })
 }
 
-async function makePost(url,body = '') {
+async function commonPost(url,body = {}) {
     return new Promise(resolve => {
         const options = {
-            url: `https://apimallwm.exijiu.com${url}`,
+            url: `https://fm.exijiu.com${url}`,
             headers : {
                 'Connection': 'keep-alive',
-                'Authorization': token,
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36 MicroMessenger/7.0.20.1781(0x6700143B) NetType/WIFI MiniProgramEnv/Windows WindowsWechat/WMPF WindowsWechat(0x63090a13) XWEB/9129',
-                'Content-Type': 'application/x-www-form-urlencoded',
-                'Accept': 'application/json, text/plain, */*',
-                'Origin': 'https://mallwm.exijiu.com',
-                'Sec-Fetch-Site': 'cross-site',
-                'Sec-Fetch-Mode': 'cors',
-                'Sec-Fetch-Dest': 'empty',
-                'Referer': 'https://servicewechat.com/wx673f827a4c2c94fa/264/page-frame.html',
-                'Accept-Encoding': 'gzip, deflate, br',
-                'Accept-Language': 'zh-CN,zh;q=0.9'
-            },
-            body: body,
-        }
-        $.post(options, async (err, resp, data) => {
-            try {
-                if (err) {
-                    console.log(`${JSON.stringify(err)}`)
-                    console.log(`${$.name} API请求失败，请检查网路重试`)
-                } else {
-                    await $.wait(4000);
-                    resolve(JSON.parse(data));
-                }
-            } catch (e) {
-                $.logErr(e, resp)
-            } finally {
-                resolve();
-            }
-        })
-    })
-}
-
-async function commonGet(url) {
-    return new Promise(resolve => {
-        const options = {
-            url: `https://apimallwm.exijiu.com${url}`,
-            headers : {
-                'Connection': 'keep-alive',
-                'Authorization': token,
+                'dataType': 'json',
+                'Channel': 'miniapp',
+                'X-access-token': token,
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36 MicroMessenger/7.0.20.1781(0x6700143B) NetType/WIFI MiniProgramEnv/Windows WindowsWechat/WMPF WindowsWechat(0x63090a13) XWEB/9129',
                 'Content-Type': 'application/json',
                 'Accept': '*/*',
-                'Origin': 'https://mallwm.exijiu.com',
-                'Sec-Fetch-Site': 'cross-site',
+                'Origin': 'https://mall.exijiu.com',
+                'Sec-Fetch-Site': 'same-site',
                 'Sec-Fetch-Mode': 'cors',
                 'Sec-Fetch-Dest': 'empty',
-                'Referer': 'https://servicewechat.com/wx673f827a4c2c94fa/264/page-frame.html',
+                'Referer': 'https://mall.exijiu.com/',
                 'Accept-Encoding': 'gzip, deflate, br',
                 'Accept-Language': 'zh-CN,zh;q=0.9'
-            }
+            },
+            body: JSON.stringify(body),
         }
-        $.get(options, async (err, resp, data) => {
+        $.post(options, async (err, resp, data) => {
             try {
                 if (err) {
                     console.log(`${JSON.stringify(err)}`)
@@ -491,8 +233,113 @@ async function slidePost(body) {
     })
 }
 
+async function drawPost(url,body = {}) {
+    return new Promise(resolve => {
+        const options = {
+            url: `https://junpinhui-service-api.exijiu.com/jph-draw${url}`,
+            headers : {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36 MicroMessenger/7.0.20.1781(0x6700143B) NetType/WIFI MiniProgramEnv/Windows WindowsWechat/WMPF WindowsWechat(0x63090a13) XWEB/9129',
+                'Content-Type': 'application/json',
+                'Accept': 'application/json, text/plain, */*',
+                'Origin': 'https://mall.exijiu.com',
+                'Sec-Fetch-Site': 'same-site',
+                'Sec-Fetch-Mode': 'cors',
+                'Sec-Fetch-Dest': 'empty',
+                'Referer': 'https://mall.exijiu.com/',
+                'Accept-Encoding': 'gzip, deflate, br',
+                'Accept-Language': 'zh-CN,zh;q=0.9'
+            },
+            body: JSON.stringify(body),
+        }
+        $.post(options, async (err, resp, data) => {
+            try {
+                if (err) {
+                    console.log(`${JSON.stringify(err)}`)
+                    console.log(`${$.name} API请求失败，请检查网路重试`)
+                } else {
+                    await $.wait(6000);
+                    resolve(JSON.parse(data));
+                }
+            } catch (e) {
+                $.logErr(e, resp)
+            } finally {
+                resolve();
+            }
+        })
+    })
+}
+
+function getSign(t,e) {
+    const n = JSON.stringify(e);
+    let r = encodeURIComponent(n);
+    const s = new RegExp("'", "g")
+        , i = new RegExp("~", "g");
+    return r = r.replace(s, "%27"),
+        r = r.replace(i, "%7E"),
+        Utils.md5(`${appkey}admjson${r}appkey${appkey}timestamp${t}6bz4j2YWIawCuBOzkxtbUpZfadpx2tlJarcw3E`.toLowerCase())
+}
+
+function aesEncrypt(e, n) {
+    let cryptojs = Utils.createCryptoJS();
+    var t = cryptojs.enc.Utf8.parse(n)
+        , i = cryptojs.enc.Utf8.parse(JSON.stringify(e))
+        , r = cryptojs.AES.encrypt(i, t, {
+        mode: cryptojs.mode.ECB,
+        padding: cryptojs.pad.Pkcs7
+    });
+    return cryptojs.enc.Base64.stringify(r.ciphertext)
+}
+
+async function loadUtils() {
+    let code = $.getdata('Utils_Code') || '';
+    if (code && Object.keys(code).length) {
+        console.log(`✅ ${$.name}: 缓存中存在Utils代码, 跳过下载`)
+        eval(code)
+        return creatUtils();
+    }
+    console.log(`🚀 ${$.name}: 开始下载Utils代码`)
+    return new Promise(async (resolve) => {
+        $.getScript(
+            `${GHPROXYURL}/https://raw.githubusercontent.com/xzxxn777/Surge/main/Utils/Utils.js`
+        ).then((fn) => {
+            $.setdata(fn, "Utils_Code")
+            eval(fn)
+            console.log(`✅ Utils加载成功, 请继续`)
+            resolve(creatUtils())
+        })
+    })
+}
+
+async function getNotice() {
+    return new Promise(resolve => {
+        const options = {
+            url: `https://fastly.jsdelivr.net/gh/xzxxn777/Surge@main/Utils/Notice.json`,
+        }
+        $.get(options, async (err, resp, data) => {
+            try {
+                if (err) {
+                    console.log(`${JSON.stringify(err)}`)
+                    console.log(`${$.name} API请求失败，请检查网路重试`)
+                } else {
+                    console.log(JSON.parse(data).notice);
+                }
+            } catch (e) {
+                $.logErr(e, resp)
+            } finally {
+                resolve();
+            }
+        })
+    })
+}
+
 async function sendMsg(message) {
     if ($.isNode()) {
+        let notify = ''
+        try {
+            notify = require('./sendNotify');
+        } catch (e) {
+            notify = require("../sendNotify");
+        }
         await notify.sendNotify($.name, message);
     } else {
         $.msg($.name, '', message)
