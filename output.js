@@ -1,6 +1,526 @@
-//Mon Feb 09 2026 13:37:56 GMT+0000 (Coordinated Universal Time)
+//Thu Feb 19 2026 02:36:54 GMT+0000 (Coordinated Universal Time)
 //Base:<url id="cv1cref6o68qmpt26ol0" type="url" status="parsed" title="GitHub - echo094/decode-js: JS混淆代码的AST分析工具 AST analysis tool for obfuscated JS code" wc="2165">https://github.com/echo094/decode-js</url>
 //Modify:<url id="cv1cref6o68qmpt26olg" type="url" status="parsed" title="GitHub - smallfawn/decode_action: 世界上本来不存在加密，加密的人多了，也便成就了解密" wc="741">https://github.com/smallfawn/decode_action</url>
+const $ = new Env('习酒');
+const notify = $.isNode() ? require('../sendNotify') : '';
+const XiJiu = ($.isNode() ? JSON.parse(process.env.XiJiu) : $.getjson("XiJiu")) || [];
+const XiJiu_Exchange = ($.isNode() ? process.env.XiJiu_Exchange : $.getdata("XiJiu_Exchange")) === 'true' || false;
+const OCR_SERVER = ($.isNode() ? process.env.OCR_SERVER : $.getdata("OCR_SERVER")) || 'https://ddddocr.xzxxn7.live';
+let cropType = [{
+  "1": "高粱"
+}, {
+  "2": "小麦"
+}];
+let loginCode = '';
+let token = '';
+let notice = '';
+!(async () => {
+  if (typeof $request != "undefined") {
+    await getCookie();
+  } else {
+    await main();
+  }
+})().catch(e => {
+  $.log(e);
+}).finally(() => {
+  $.done({});
+});
+async function main() {
+  console.log('作者：@xzxxn777\n频道：https://t.me/xzxxn777\n群组：https://t.me/xzxxn7777\n自用机场推荐：https://xn--diqv0fut7b.com\n');
+  for (const item of XiJiu) {
+    id = item.id;
+    loginCode = item.loginCode;
+    console.log(`用户：${id}开始任务`);
+    console.log('获取token');
+    let login = await loginGet(`/anti-channeling/public/index.php/api/v2/Member/getJwt`);
+    if (login.code != 0) {
+      console.log(login.msg);
+      continue;
+    }
+    token = login.data.jwt;
+    console.log(token);
+    console.log("开始签到");
+    let sign = await commonPost("/member/Signin/sign", 'from=miniprogram_index');
+    console.log(sign.msg);
+    console.log("————————————");
+    console.log("开始每日验证");
+    let getValidateInfo = await commonGet(`/garden/slide_validate/getValidateInfo`);
+    if (getValidateInfo.data.status == 1) {
+      let slidingImage = getValidateInfo.data.datas[1].split(",")[1];
+      let backImage = getValidateInfo.data.datas[0].split(",")[1];
+      let getXpos = await slidePost({
+        'slidingImage': slidingImage,
+        'backImage': backImage
+      });
+      if (!getXpos) {
+        console.log("ddddocr服务异常");
+        await sendMsg('ddddocr服务异常');
+        break;
+      }
+      console.log(getXpos);
+      let toValidate = await commonPost(`/garden/slide_validate/toValidate`, JSON.stringify({
+        "coordinate": getXpos.result
+      }));
+      console.log(toValidate.msg);
+    } else {
+      console.log(getValidateInfo.msg);
+    }
+    console.log("————————————");
+    console.log("开始每日签到");
+    let dailySign = await commonPost("/garden/sign/dailySign", JSON.stringify({}));
+    if (dailySign.data.isTodayFirstSign) {
+      console.log(dailySign.data.tips);
+    } else {
+      console.log('今日已签到');
+    }
+    console.log("————————————");
+    console.log("开始种植");
+    let getMemberInfo = await commonGet("/garden/Gardenmemberinfo/getMemberInfo");
+    console.log(`拥有：高粱*${getMemberInfo.data.sorghum} 小麦*${getMemberInfo.data.wheat} 酒曲*${getMemberInfo.data.wine_yeast} 酒*${getMemberInfo.data.wine} 水*${getMemberInfo.data.water} 肥料*${getMemberInfo.data.manure}`);
+    let lands = await commonGet("/garden/sorghum/index");
+    let unLock = true;
+    for (let land of lands.data) {
+      if (land.status == -1) {
+        console.log(`第${land.serial_number}块地：未解锁`);
+        if (unLock) {
+          console.log(`开始解锁土地`);
+          let extend = await commonPost(`/garden/sorghum/extend`, JSON.stringify({
+            "serial_number": land.serial_number
+          }));
+          if (extend.err == 0) {
+            console.log(extend.msg);
+            console.log(`开始种植`);
+            getMemberInfo = await commonGet("/garden/Gardenmemberinfo/getMemberInfo");
+            if (getMemberInfo.data.wine_yeast > 0) {
+              let seed = await commonPost(`/garden/sorghum/seed`, JSON.stringify({
+                "id": land.id,
+                "type": 1
+              }));
+              if (seed.err == 61010) {
+                await sendMsg(`用户：${id}\n${seed.msg}`);
+              }
+              console.log(seed.msg);
+            } else {
+              let seed = await commonPost(`/garden/sorghum/seed`, JSON.stringify({
+                "id": land.id,
+                "type": 2
+              }));
+              if (seed.err == 61010) {
+                await sendMsg(`用户：${id}\n${seed.msg}`);
+              }
+              console.log(seed.msg);
+            }
+          } else {
+            console.log(extend.msg);
+            unLock = false;
+          }
+        }
+      } else {
+        console.log(`第${land.serial_number}块地：已解锁`);
+        let name = cropType.find(item => land.type in item)[land.type];
+        console.log(`种植：${name}*${land.volumn} 收获时间：${land.crop_time}`);
+        if (land.status == 0) {
+          console.log(`${name}已收获，未种植`);
+          console.log(`开始种植`);
+          getMemberInfo = await commonGet("/garden/Gardenmemberinfo/getMemberInfo");
+          if (getMemberInfo.data.wine_yeast > 0) {
+            let seed = await commonPost(`/garden/sorghum/seed`, JSON.stringify({
+              "id": land.id,
+              "type": 1
+            }));
+            if (seed.err == 61010) {
+              await sendMsg(`用户：${id}\n${seed.msg}`);
+            }
+            console.log(seed.msg);
+          } else {
+            let seed = await commonPost(`/garden/sorghum/seed`, JSON.stringify({
+              "id": land.id,
+              "type": 2
+            }));
+            if (seed.err == 61010) {
+              await sendMsg(`用户：${id}\n${seed.msg}`);
+            }
+            console.log(seed.msg);
+          }
+        } else if (land.status == 2) {
+          console.log(`${name}已成熟，开始收获`);
+          let harvest = await commonPost(`/garden/sorghum/harvest`, JSON.stringify({
+            "id": land.id
+          }));
+          console.log(harvest.msg);
+          console.log(`开始种植`);
+          getMemberInfo = await commonGet("/garden/Gardenmemberinfo/getMemberInfo");
+          if (getMemberInfo.data.wine_yeast > 0) {
+            let seed = await commonPost(`/garden/sorghum/seed`, JSON.stringify({
+              "id": land.id,
+              "type": 1
+            }));
+            if (seed.err == 61010) {
+              await sendMsg(`用户：${id}\n${seed.msg}`);
+            }
+            console.log(seed.msg);
+          } else {
+            let seed = await commonPost(`/garden/sorghum/seed`, JSON.stringify({
+              "id": land.id,
+              "type": 2
+            }));
+            if (seed.err == 61010) {
+              await sendMsg(`用户：${id}\n${seed.msg}`);
+            }
+            console.log(seed.msg);
+          }
+        } else {
+          let code = 0;
+          while (code == 0) {
+            let watering = await commonPost(`/garden/sorghum/watering`, JSON.stringify({
+              "id": land.id
+            }));
+            console.log(watering.msg);
+            code = watering.err;
+          }
+          code = 0;
+          while (code == 0) {
+            let manuring = await commonPost(`/garden/sorghum/manuring`, JSON.stringify({
+              "id": land.id
+            }));
+            console.log(manuring.msg);
+            code = manuring.err;
+          }
+        }
+        lands = await commonGet("/garden/sorghum/index");
+        const i = lands.data.findIndex(e => e.id == land.id);
+        if (lands.data[i].status == 2) {
+          console.log(`${name}已成熟，开始收获`);
+          let harvest = await commonPost(`/garden/sorghum/harvest`, JSON.stringify({
+            "id": land.id
+          }));
+          console.log(harvest.msg);
+          console.log(`开始种植`);
+          getMemberInfo = await commonGet("/garden/Gardenmemberinfo/getMemberInfo");
+          if (getMemberInfo.data.wine_yeast > 0) {
+            let seed = await commonPost(`/garden/sorghum/seed`, JSON.stringify({
+              "id": land.id,
+              "type": 1
+            }));
+            if (seed.err == 61010) {
+              await sendMsg(`用户：${id}\n${seed.msg}`);
+            }
+            console.log(seed.msg);
+          } else {
+            let seed = await commonPost(`/garden/sorghum/seed`, JSON.stringify({
+              "id": land.id,
+              "type": 2
+            }));
+            if (seed.err == 61010) {
+              await sendMsg(`用户：${id}\n${seed.msg}`);
+            }
+            console.log(seed.msg);
+          }
+        }
+        let code = 0;
+        while (code == 0) {
+          let watering = await commonPost(`/garden/sorghum/watering`, JSON.stringify({
+            "id": land.id
+          }));
+          console.log(watering.msg);
+          code = watering.err;
+        }
+        code = 0;
+        while (code == 0) {
+          let manuring = await commonPost(`/garden/sorghum/manuring`, JSON.stringify({
+            "id": land.id
+          }));
+          console.log(manuring.msg);
+          code = manuring.err;
+        }
+      }
+    }
+    console.log("————————————");
+    console.log("开始做任务");
+    let tasks = await commonGet("/garden/tasks/index");
+    if (tasks) {
+      for (let task of Object.values(tasks.data)) {
+        console.log(`任务：${task.name} id：${task.id}`);
+        if (task.is_complete == 1) {
+          console.log("任务已完成");
+        } else {
+          if (task.id == 1) {
+            let question = await commonGet(`/garden/Gardenquestiontask/index`);
+            let answer = [{
+              "itemid": `${question.data[0].id}`,
+              "selected": `${question.data[0].answer}`
+            }];
+            let answerResults = await commonGet(`/garden/Gardenquestiontask/answerResults?answer=${encodeURI(JSON.stringify(answer))}`);
+            console.log(answerResults.msg);
+          }
+          if (task.id == 2) {
+            for (let i = 0; i < task.limit_num; i++) {
+              let dailyShare = await commonGet("/garden/gardenmemberinfo/dailyShare");
+              console.log(dailyShare.msg);
+            }
+          }
+          if (task.id == 4) {
+            let realScene = await commonGet("/garden/notice/realScene");
+            let reward = await commonGet(`/garden/realscene/reward`);
+            console.log(reward.msg);
+          }
+        }
+      }
+    }
+    console.log("————————————");
+    console.log("开始添加好友");
+    let addFriendToken = await commonGet("/garden/friends/addFriendToken");
+    addFriendToken = addFriendToken.data;
+    addFriendToken.friend_id = id;
+    console.log(`助力码：${JSON.stringify(addFriendToken)}`);
+    console.log("————————————");
+    console.log("开始制曲");
+    let code = 0;
+    while (code == 0) {
+      let makeWineYeast = await makePost("/garden/wheat/makeWineYeast", 'volumn=100');
+      console.log(makeWineYeast.msg);
+      code = makeWineYeast.err;
+    }
+    console.log("————————————");
+    console.log("开始制酒");
+    let wine = await commonGet("/garden/gardenmemberwine/index");
+    if (wine.total == 0) {
+      console.log("没有正在酿造的酒，开始制酒");
+      let makeWine = await makePost("/garden/gardenmemberwine/makeWine", 'volumn=200');
+      console.log(makeWine.msg);
+    }
+    for (let item of wine.data) {
+      console.log(`酒*${item.crrent_volumn} 收获时间：${item.crop_time}`);
+      if (item.status == 4) {
+        let harvestWine = await commonGet(`/garden/gardenmemberwine/harvestWine?id=${item.id}`);
+        console.log(harvestWine.msg);
+      }
+    }
+    console.log("————————————");
+    console.log("兑换");
+    getMemberInfo = await commonGet("/garden/Gardenmemberinfo/getMemberInfo");
+    console.log(`拥有酒：${getMemberInfo.data.wine}`);
+    if (XiJiu_Exchange) {
+      let exchange = await commonGet(`/garden/Gardenjifenshop/exchange?wine=${getMemberInfo.data.wine}`);
+      console.log(exchange.msg);
+    }
+    console.log("————————————");
+    console.log("查询积分");
+    getMemberInfo = await commonGet("/garden/Gardenmemberinfo/getMemberInfo");
+    console.log(`拥有积分：${getMemberInfo.data.integration} 拥有酒：${getMemberInfo.data.wine}\n`);
+    notice += `用户：${id} 积分：${getMemberInfo.data.integration} 酒：${getMemberInfo.data.wine}\n`;
+  }
+  if (notice) {
+    await sendMsg(notice);
+  }
+}
+async function getCookie() {
+  const loginCode = $request.headers["login_code"];
+  if (!loginCode) {
+    return;
+  }
+  const body = $.toObj($response.body);
+  if (!body.data || !body.data.phone_no) {
+    return;
+  }
+  const id = body.data.phone_no;
+  const newData = {
+    "id": id,
+    "loginCode": loginCode
+  };
+  const index = XiJiu.findIndex(e => e.id == newData.id);
+  if (index !== -1) {
+    if (XiJiu[index].loginCode == newData.loginCode) {
+      return;
+    } else {
+      XiJiu[index] = newData;
+      console.log(newData.loginCode);
+      $.msg($.name, `🎉用户${newData.id}更新token成功!`, ``);
+    }
+  } else {
+    XiJiu.push(newData);
+    console.log(newData.loginCode);
+    $.msg($.name, `🎉新增用户${newData.id}成功!`, ``);
+  }
+  $.setjson(XiJiu, "XiJiu");
+}
+async function loginGet(url) {
+  return new Promise(resolve => {
+    const options = {
+      url: `https://xcx.exijiu.com${url}`,
+      headers: {
+        'Connection': 'keep-alive',
+        'login_code': loginCode,
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36 MicroMessenger/7.0.20.1781(0x6700143B) NetType/WIFI MiniProgramEnv/Windows WindowsWechat/WMPF WindowsWechat(0x63090a13) XWEB/9129',
+        'Accept': '*/*',
+        'Origin': 'https://mallwm.exijiu.com',
+        'Sec-Fetch-Site': 'cross-site',
+        'Sec-Fetch-Mode': 'cors',
+        'Sec-Fetch-Dest': 'empty',
+        'Referer': 'https://servicewechat.com/wx673f827a4c2c94fa/264/page-frame.html',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Accept-Language': 'zh-CN,zh;q=0.9'
+      }
+    };
+    $.get(options, async (err, resp, data) => {
+      try {
+        if (err) {
+          console.log(`${JSON.stringify(err)}`);
+          console.log(`${$.name} API请求失败，请检查网路重试`);
+        } else {
+          await $.wait(4000);
+          resolve(JSON.parse(data));
+        }
+      } catch (e) {
+        $.logErr(e, resp);
+      } finally {
+        resolve();
+      }
+    });
+  });
+}
+async function commonPost(url, body = '') {
+  return new Promise(resolve => {
+    const options = {
+      url: `https://apimallwm.exijiu.com${url}`,
+      headers: {
+        'Connection': 'keep-alive',
+        'Authorization': token,
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36 MicroMessenger/7.0.20.1781(0x6700143B) NetType/WIFI MiniProgramEnv/Windows WindowsWechat/WMPF WindowsWechat(0x63090a13) XWEB/9129',
+        'Content-Type': 'application/json',
+        'Accept': '*/*',
+        'Origin': 'https://mallwm.exijiu.com',
+        'Sec-Fetch-Site': 'cross-site',
+        'Sec-Fetch-Mode': 'cors',
+        'Sec-Fetch-Dest': 'empty',
+        'Referer': 'https://servicewechat.com/wx673f827a4c2c94fa/264/page-frame.html',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Accept-Language': 'zh-CN,zh;q=0.9'
+      },
+      body: body
+    };
+    $.post(options, async (err, resp, data) => {
+      try {
+        if (err) {
+          console.log(`${JSON.stringify(err)}`);
+          console.log(`${$.name} API请求失败，请检查网路重试`);
+        } else {
+          await $.wait(4000);
+          resolve(JSON.parse(data));
+        }
+      } catch (e) {
+        $.logErr(e, resp);
+      } finally {
+        resolve();
+      }
+    });
+  });
+}
+async function makePost(url, body = '') {
+  return new Promise(resolve => {
+    const options = {
+      url: `https://apimallwm.exijiu.com${url}`,
+      headers: {
+        'Connection': 'keep-alive',
+        'Authorization': token,
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36 MicroMessenger/7.0.20.1781(0x6700143B) NetType/WIFI MiniProgramEnv/Windows WindowsWechat/WMPF WindowsWechat(0x63090a13) XWEB/9129',
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Accept': 'application/json, text/plain, */*',
+        'Origin': 'https://mallwm.exijiu.com',
+        'Sec-Fetch-Site': 'cross-site',
+        'Sec-Fetch-Mode': 'cors',
+        'Sec-Fetch-Dest': 'empty',
+        'Referer': 'https://servicewechat.com/wx673f827a4c2c94fa/264/page-frame.html',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Accept-Language': 'zh-CN,zh;q=0.9'
+      },
+      body: body
+    };
+    $.post(options, async (err, resp, data) => {
+      try {
+        if (err) {
+          console.log(`${JSON.stringify(err)}`);
+          console.log(`${$.name} API请求失败，请检查网路重试`);
+        } else {
+          await $.wait(4000);
+          resolve(JSON.parse(data));
+        }
+      } catch (e) {
+        $.logErr(e, resp);
+      } finally {
+        resolve();
+      }
+    });
+  });
+}
+async function commonGet(url) {
+  return new Promise(resolve => {
+    const options = {
+      url: `https://apimallwm.exijiu.com${url}`,
+      headers: {
+        'Connection': 'keep-alive',
+        'Authorization': token,
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36 MicroMessenger/7.0.20.1781(0x6700143B) NetType/WIFI MiniProgramEnv/Windows WindowsWechat/WMPF WindowsWechat(0x63090a13) XWEB/9129',
+        'Content-Type': 'application/json',
+        'Accept': '*/*',
+        'Origin': 'https://mallwm.exijiu.com',
+        'Sec-Fetch-Site': 'cross-site',
+        'Sec-Fetch-Mode': 'cors',
+        'Sec-Fetch-Dest': 'empty',
+        'Referer': 'https://servicewechat.com/wx673f827a4c2c94fa/264/page-frame.html',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Accept-Language': 'zh-CN,zh;q=0.9'
+      }
+    };
+    $.get(options, async (err, resp, data) => {
+      try {
+        if (err) {
+          console.log(`${JSON.stringify(err)}`);
+          console.log(`${$.name} API请求失败，请检查网路重试`);
+        } else {
+          await $.wait(4000);
+          resolve(JSON.parse(data));
+        }
+      } catch (e) {
+        $.logErr(e, resp);
+      } finally {
+        resolve();
+      }
+    });
+  });
+}
+async function slidePost(body) {
+  return new Promise(resolve => {
+    const options = {
+      url: `${OCR_SERVER}/capcode`,
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(body)
+    };
+    $.post(options, (err, resp, data) => {
+      try {
+        if (err) {
+          console.log(`${JSON.stringify(err)}`);
+          console.log(`${$.name} API请求失败，请检查网路重试`);
+        } else {
+          resolve(JSON.parse(data));
+        }
+      } catch (e) {
+        $.logErr(e, resp);
+      } finally {
+        resolve();
+      }
+    });
+  });
+}
+async function sendMsg(message) {
+  if ($.isNode()) {
+    await notify.sendNotify($.name, message);
+  } else {
+    $.msg($.name, '', message);
+  }
+}
 function Env(t, e) {
   class s {
     constructor(t) {
